@@ -2,6 +2,7 @@
 
 import re
 import torch
+from safetensors.torch import load_file
 
 map_down_lllite_to_unet = {4: (1, 0), 5: (1, 1), 7: (2, 0), 8: (2, 1)}
 
@@ -114,11 +115,17 @@ def clear_all_lllite():
 
 
 class ControlNetLLLite(torch.nn.Module):
-    def __init__(self, state_dict):
+    def __init__(self, path: str):
         super().__init__()
         self.cache = {}
-
+        
         module_weights = {}
+
+        try:
+            state_dict = load_file(path)
+        except:
+            raise RuntimeError(f"Failed to load {path}")
+        
         for key, value in state_dict.items():
             fragments = key.split(".")
             module_name = fragments[0]
@@ -159,11 +166,14 @@ class ControlNetLLLite(torch.nn.Module):
         return
 
     @torch.no_grad()
-    def hook(self, pipe, cond, weight, start, end):
+    def hook(self, pipe, cond, weight):
         global all_hack
         
         model = pipe.unet
+        if type(cond) != torch.Tensor:
+            cond = torch.tensor(cond)
         
+        cond_image = cond.unsqueeze(dim=0).permute(0, 3, 1, 2)
         cond_image = cond * 2.0 - 1.0
 
         for module in self.modules.values():
@@ -181,11 +191,10 @@ class ControlNetLLLite(torch.nn.Module):
             
 
             if root == 'input':
-                # b = model.input_blocks[int(block)][1].transformer_blocks[int(block_number)]
                 mapped_block, mapped_number = map_down_lllite_to_unet[int(block)]
                 b = model.down_blocks[mapped_block].attentions[int(mapped_number)].transformer_blocks[int(block_number)]
-                print(f'block: llite_unet_{root}_blocks_{block}_1_transformer_blocks_{block_number}_{attn_name}_to_{proj_name}')
-                print(f'mapped to: model.down_blocks[{mapped_block}].attentions[{mapped_number}].transformer_blocks[{block_number}]')
+                # print(f'block: llite_unet_{root}_blocks_{block}_1_transformer_blocks_{block_number}_{attn_name}_to_{proj_name}')
+                # print(f'mapped to: model.down_blocks[{mapped_block}].attentions[{mapped_number}].transformer_blocks[{block_number}]')
             elif root == 'output':
                 # TODO: fix this
                 print(f'Not implemented: {root}')
@@ -196,7 +205,7 @@ class ControlNetLLLite(torch.nn.Module):
             assert b is not None, 'Failed to load ControlLLLite!'
             b = getattr(b, 'to_' + proj_name, None)
             assert b is not None, 'Failed to load ControlLLLite!'
-                print(f'.{attn_name}.to_{proj_name}')
+
             if not hasattr(b, 'lllite_list'):
                 b.lllite_list = []
 
@@ -204,7 +213,7 @@ class ControlNetLLLite(torch.nn.Module):
                 all_hack[b] = b.forward
                 b.forward = self.get_hacked_forward(original_forward=b.forward, model=model, blk=b)
             
-            b.lllite_list.append((weight, start, end, v))
+            b.lllite_list.append((weight, v))
         return
 
     def get_hacked_forward(self, original_forward, model, blk):
@@ -212,12 +221,9 @@ class ControlNetLLLite(torch.nn.Module):
         def forward(x, **kwargs):
 
             hack = 0
-            for weight, start, end, module in blk.lllite_list:
+            for weight, module in blk.lllite_list:
                 module.to(x.device)
-                # if current_sampling_percent < start or current_sampling_percent > end:
-                #     hack = hack + 0
-                # else:
-                # hack = hack + module(x) * weight
+
                 hack = hack + module(x) * weight
 
             x = x + hack
