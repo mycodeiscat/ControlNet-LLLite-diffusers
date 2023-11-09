@@ -76,9 +76,9 @@ class LLLiteModule(torch.nn.Module):
             # print(f"cond_emb is None, {self.name}")
             cx = self.conditioning1(self.cond_image.to(x.device, dtype=x.dtype))
 
-            if blk_shape is not None:
-                b, c, h, w = blk_shape
-                cx = torch.nn.functional.interpolate(cx, (h, w), mode="nearest-exact")
+            # if blk_shape is not None:
+            #     b, c, h, w = blk_shape
+            #     cx = torch.nn.functional.interpolate(cx, (h, w), mode="nearest-exact")
 
             if not self.is_conv2d:
                 # reshape / b,c,h,w -> b,h*w,c
@@ -170,11 +170,13 @@ class ControlNetLLLite(torch.nn.Module):
         global all_hack
         
         model = pipe.unet
+
         if type(cond) != torch.Tensor:
             cond = torch.tensor(cond)
         
+        cond /= 255
         cond_image = cond.unsqueeze(dim=0).permute(0, 3, 1, 2)
-        cond_image = cond * 2.0 - 1.0
+        cond_image = cond_image * 2.0 - 1.0
 
         for module in self.modules.values():
             module.set_cond_image(cond_image)
@@ -193,8 +195,6 @@ class ControlNetLLLite(torch.nn.Module):
             if root == 'input':
                 mapped_block, mapped_number = map_down_lllite_to_unet[int(block)]
                 b = model.down_blocks[mapped_block].attentions[int(mapped_number)].transformer_blocks[int(block_number)]
-                # print(f'block: llite_unet_{root}_blocks_{block}_1_transformer_blocks_{block_number}_{attn_name}_to_{proj_name}')
-                # print(f'mapped to: model.down_blocks[{mapped_block}].attentions[{mapped_number}].transformer_blocks[{block_number}]')
             elif root == 'output':
                 # TODO: fix this
                 print(f'Not implemented: {root}')
@@ -205,7 +205,7 @@ class ControlNetLLLite(torch.nn.Module):
             assert b is not None, 'Failed to load ControlLLLite!'
             b = getattr(b, 'to_' + proj_name, None)
             assert b is not None, 'Failed to load ControlLLLite!'
-
+            
             if not hasattr(b, 'lllite_list'):
                 b.lllite_list = []
 
@@ -223,7 +223,7 @@ class ControlNetLLLite(torch.nn.Module):
             hack = 0
             for weight, module in blk.lllite_list:
                 module.to(x.device)
-
+                
                 hack = hack + module(x) * weight
 
             x = x + hack
