@@ -166,7 +166,7 @@ class ControlNetLLLite(torch.nn.Module):
         return
 
     @torch.no_grad()
-    def hook(self, pipe, cond, weight):
+    def apply(self, pipe, cond, weight):
         global all_hack
         
         model = pipe.unet
@@ -174,9 +174,9 @@ class ControlNetLLLite(torch.nn.Module):
         if type(cond) != torch.Tensor:
             cond = torch.tensor(cond)
         
-        cond /= 255
-        cond_image = cond.unsqueeze(dim=0).permute(0, 3, 1, 2)
-        cond_image = cond_image * 2.0 - 1.0
+        cond = cond/255 # 0-255 -> 0-1
+        cond_image = cond.unsqueeze(dim=0).permute(0, 3, 1, 2) # h,w,c -> b,c,h,w
+        cond_image = cond_image * 2.0 - 1.0 # 0-1 -> -1-1
 
         for module in self.modules.values():
             module.set_cond_image(cond_image)
@@ -196,7 +196,7 @@ class ControlNetLLLite(torch.nn.Module):
                 mapped_block, mapped_number = map_down_lllite_to_unet[int(block)]
                 b = model.down_blocks[mapped_block].attentions[int(mapped_number)].transformer_blocks[int(block_number)]
             elif root == 'output':
-                # TODO: fix this
+                # TODO: Map up unet blocks to lite blocks
                 print(f'Not implemented: {root}')
             else:
                 b = model.mid_block.attentions[0].transformer_blocks[int(block_number)]
@@ -218,15 +218,16 @@ class ControlNetLLLite(torch.nn.Module):
 
     def get_hacked_forward(self, original_forward, model, blk):
         @torch.no_grad()
-        def forward(x, **kwargs):
+        def forward(x, lora_weight, **kwargs):
 
             hack = 0
             for weight, module in blk.lllite_list:
                 module.to(x.device)
+                module.to(x.dtype)
                 
                 hack = hack + module(x) * weight
 
             x = x + hack
 
-            return original_forward(x, **kwargs)
+            return original_forward(x, lora_weiight, **kwargs)
         return forward
