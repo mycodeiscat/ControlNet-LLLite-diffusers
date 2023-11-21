@@ -229,5 +229,5 @@ class ControlNetLLLite(torch.nn.Module):
 
             x = x + hack
 
-            return original_forward(x, lora_weiight, **kwargs)
+            return original_forward(x, lora_weight, **kwargs)
         return forward
