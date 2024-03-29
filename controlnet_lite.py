@@ -218,7 +218,7 @@ class ControlNetLLLite(torch.nn.Module):
 
     def get_hacked_forward(self, original_forward, model, blk):
         @torch.no_grad()
-        def forward(x, lora_weight, **kwargs):
+        def forward(x, **kwargs):
 
             hack = 0
             for weight, module in blk.lllite_list:
@@ -229,5 +229,5 @@ class ControlNetLLLite(torch.nn.Module):
 
             x = x + hack
 
-            return original_forward(x, lora_weight, **kwargs)
+            return original_forward(x, **kwargs)
         return forward
