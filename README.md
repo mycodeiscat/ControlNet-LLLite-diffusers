@@ -2,7 +2,7 @@
 This is a quick hack for [ControlNet-LLLite](https://github.com/kohya-ss/sd-scripts/blob/sdxl/docs/train_lllite_README.md) to work with diffusers.
 
 # Requirements
-diffusers>=0.22.0 (Due to difference in forward calls)
+diffusers>=0.27.2 (Due to difference in forward calls and PEFT integration)
 
 ## Usage
 ```python
